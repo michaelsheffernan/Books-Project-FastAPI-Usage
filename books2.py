@@ -1,6 +1,7 @@
 from fastapi import *
 from pydantic import *
 from typing import *
+from starlette import status
 
 app = FastAPI()
 
@@ -11,13 +12,15 @@ class Book:
     author: str
     description: str
     rating: int
+    published_date: int
 
-    def __init__(self, id, title, author, description, rating):
+    def __init__(self, id, title, author, description, rating, published_date):
         self.id = id
         self.title = title
         self.author = author
         self.description = description
         self.rating = rating
+        self.published_date = published_date
 
 
 class BookRequest(BaseModel):
@@ -27,6 +30,7 @@ class BookRequest(BaseModel):
     author: str = Field(min_length=1)
     description: str = Field(min_length=1, max_length=100)
     rating: int = Field(gt=-1, lt=6)
+    published_date: int = Field(gt=1900, lt=2027)
 
     model_config = {
         "jsnon_shcema_ectra": {
@@ -34,7 +38,9 @@ class BookRequest(BaseModel):
                 "title": "A new Book",
                 "author": "Mchael Sweeny",
                 "description": "A new description",
-                "rating": "5"
+                "rating": "5",
+                "published date": "2012"
+
             }
         }
     }
@@ -42,25 +48,51 @@ class BookRequest(BaseModel):
 
 BOOKS = [
     Book(1, "Introductory Software Engineering",
-         "Michael Sweeney", "Very Good Introduction", "5"),
+         "Michael Sweeney", "Very Good Introduction", 5, 2024),
     Book(2, "Essential Machine Learning", "John Doe",
-         "In depth intro to Machine Learning", "4"),
+         "In depth intro to Machine Learning", 4, 2013),
     Book(3, "Computers for Dummies", "Jane Smith",
-         "Learn computer science for dummies", "3"),
+         "Learn computer science for dummies", 3, 1989),
     Book(4, "Master Neural Networks", "Arthur Kernis",
-         "Advanced topics of neural networks", "5"),
-    Book(5, "Larping 101", "Clav", "How to larp", "5"),
+         "Advanced topics of neural networks", 5, 2010),
+    Book(5, "Larping 101", "Clav", "How to larp", 5, 2026),
     Book(6, "Land an internship", "James Graham",
-         "All you need to know about getting internships at top companies", "4")
+         "All you need to know about getting internships at top companies", 4, 2016)
 ]
 
 
-@app.get("/books")
+@app.get("/books", status_code=status.HTTP_200_OK)
 async def read_all_books():
     return BOOKS
 
 
-@app.post("/create-book")
+@app.get("/books/{book_id}", status_code=status.HTTP_200_OK)
+async def read_book(book_id: int = Path(gt=0)):
+    for book in BOOKS:
+        if book.id == book_id:
+            return book
+    raise HTTPException(status_code=404, detail="Item not found")
+
+
+@app.get("/books/", status_code=status.HTTP_200_OK)
+async def read_book_by_rating(book_rating: int = Query(gt=0, lt=6)):
+    books_to_return = []
+    for book in BOOKS:
+        if book.rating == book_rating:
+            books_to_return.append(book)
+    return books_to_return
+
+
+@app.get("/books/publish/", status_code=status.HTTP_200_OK)
+async def read_book_by_published_date(published_date: int = Query(gt=1900, lt=2027)):
+    books_to_return = []
+    for book in BOOKS:
+        if book.published_date == published_date:
+            books_to_return.append(book)
+    return books_to_return
+
+
+@app.post("/create-book", status_code=status.HTTP_201_CREATED)
 async def create_book(book_request: BookRequest):
     new_book = Book(**book_request.model_dump())
     BOOKS.append(find_book_id(new_book))
@@ -69,3 +101,26 @@ async def create_book(book_request: BookRequest):
 def find_book_id(book: Book):
     book.id = 1 if len(BOOKS) == 0 else BOOKS[-1].id + 1
     return book
+
+
+@app.put("/books/update_book", status_code=status.HTTP_204_NO_CONTENT)
+async def update_book(book: BookRequest):
+    book_changed = False
+    for i in range(len(BOOKS)):
+        if BOOKS[i].id == book.id:
+            BOOKS[i] = book
+            book_changed = True
+    if not book_changed:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+
+@app.delete("/books/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_book(book_id: int = Path(gt=0)):
+    book_changed = False
+    for i in range(len(BOOKS)):
+        if BOOKS[i].id == book_id:
+            BOOKS.pop(i)
+            book_changed = True
+            break
+    if not book_changed:
+        raise HTTPException(status_code=404, detail="Item not found")
